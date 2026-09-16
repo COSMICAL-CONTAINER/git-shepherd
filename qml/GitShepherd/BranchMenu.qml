@@ -9,8 +9,9 @@ Popup {
     property string currentBranch: ""
     property string pinnedBranch: ""
     property var branches: []
+    property var tags: []
 
-    signal switchRequested(string branch)
+    signal switchRequested(string ref, string kind)
     signal pinCurrentRequested()
     signal unpinRequested()
 
@@ -21,6 +22,10 @@ Popup {
             b => b.startsWith("origin/") && !locals.includes(b.substring(7)))
         return locals.concat(remotes)
     }
+    // 当前是否停在某条分支上（而非 detached / 标签）
+    readonly property bool onBranch: currentBranch.length > 0
+                                     && currentBranch !== "(detached)"
+                                     && !currentBranch.startsWith("🏷")
 
     width: 264
     padding: 8
@@ -36,9 +41,9 @@ Popup {
         spacing: 6
 
         Text {
-            visible: root.displayList.length === 0
+            visible: root.displayList.length === 0 && root.tags.length === 0
             Layout.fillWidth: true
-            text: qsTr("暂无分支信息（先执行一次检测）")
+            text: qsTr("暂无分支 / 标签信息（先执行一次检测）")
             color: Theme.dim
             font.pixelSize: 12
             wrapMode: Text.WordWrap
@@ -51,7 +56,7 @@ Popup {
             id: branchList
             visible: root.displayList.length > 0
             Layout.fillWidth: true
-            implicitHeight: Math.min(contentHeight, 264)
+            implicitHeight: Math.min(contentHeight, 240)
             clip: true
             spacing: 2
             model: root.displayList
@@ -112,7 +117,91 @@ Popup {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
                         if (!branchRow.isCurrent) {
-                            root.switchRequested(branchRow.modelData)
+                            root.switchRequested(branchRow.modelData,
+                                                 branchRow.isRemote ? "remote" : "")
+                            root.close()
+                        }
+                    }
+                }
+            }
+        }
+
+        // 标签区
+        Rectangle {
+            visible: root.tags.length > 0
+            Layout.fillWidth: true
+            height: 1
+            color: Theme.border
+        }
+
+        Text {
+            visible: root.tags.length > 0
+            text: qsTr("标签")
+            color: Theme.dim
+            font.pixelSize: 11
+            leftPadding: 10
+        }
+
+        ListView {
+            id: tagList
+            visible: root.tags.length > 0
+            Layout.fillWidth: true
+            implicitHeight: Math.min(contentHeight, 170)
+            clip: true
+            spacing: 2
+            model: root.tags
+
+            ScrollBar.vertical: ScrollBar {
+                contentItem: Rectangle {
+                    color: Theme.border
+                    radius: 4
+                    implicitWidth: 6
+                }
+            }
+
+            delegate: Rectangle {
+                id: tagRow
+                required property string modelData
+                readonly property bool isCurrent:
+                    root.currentBranch === "🏷 " + tagRow.modelData
+
+                width: tagList.width
+                height: 28
+                radius: 6
+                color: tagRowMouse.containsMouse ? Theme.surfaceAlt : "transparent"
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    spacing: 8
+
+                    Text {
+                        text: tagRow.isCurrent ? "✓" : ""
+                        color: Theme.accent
+                        font.pixelSize: 12
+                        font.bold: true
+                        Layout.preferredWidth: 12
+                    }
+
+                    Text {
+                        text: "🏷 " + tagRow.modelData
+                        color: Theme.purple
+                        font.pixelSize: 13
+                        font.family: "Consolas"
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                }
+
+                MouseArea {
+                    id: tagRowMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (!tagRow.isCurrent) {
+                            root.switchRequested(tagRow.modelData, "tag")
                             root.close()
                         }
                     }
@@ -127,9 +216,10 @@ Popup {
             color: Theme.border
         }
 
-        // 跟随分支操作行
+        // 跟随分支操作行（detached / 停在标签上时不允许设新跟随，但仍可切回）
         Rectangle {
             visible: root.displayList.length > 0
+                     && (root.pinnedBranch.length > 0 || root.onBranch)
             Layout.fillWidth: true
             height: 34
             radius: 6
@@ -139,11 +229,11 @@ Popup {
                 anchors.centerIn: parent
                 width: parent.width - 16
                 text: {
-                    if (root.pinnedBranch.length === 0)
-                        return qsTr("📌 跟随当前分支（%1）").arg(root.currentBranch)
-                    if (root.pinnedBranch === root.currentBranch)
+                    if (root.pinnedBranch === root.currentBranch && root.onBranch)
                         return qsTr("📌 已跟随 %1 · 点击取消").arg(root.currentBranch)
-                    return qsTr("📌 切回跟随分支 %1").arg(root.pinnedBranch)
+                    if (root.pinnedBranch.length > 0)
+                        return qsTr("📌 切回跟随分支 %1").arg(root.pinnedBranch)
+                    return qsTr("📌 跟随当前分支（%1）").arg(root.currentBranch)
                 }
                 color: Theme.dim
                 font.pixelSize: 12
@@ -157,12 +247,12 @@ Popup {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    if (root.pinnedBranch.length === 0)
-                        root.pinCurrentRequested()
-                    else if (root.pinnedBranch === root.currentBranch)
+                    if (root.pinnedBranch === root.currentBranch && root.onBranch)
                         root.unpinRequested()
+                    else if (root.pinnedBranch.length > 0)
+                        root.switchRequested(root.pinnedBranch, "")
                     else
-                        root.switchRequested(root.pinnedBranch)
+                        root.pinCurrentRequested()
                     root.close()
                 }
             }

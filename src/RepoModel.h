@@ -23,9 +23,10 @@ struct RepoInfo
     QString path;
     QString name;
     QString folder;        // 登记来源文件夹；空 = 单独添加的仓库
-    QString branch;        // 当前分支
+    QString branch;        // 当前分支（detached 时为 🏷 标签名或 "(detached)"）
     QString pinnedBranch;  // 用户设定的“跟随分支”
     QStringList branches;  // 本地 + 远端分支（检测时刷新）
+    QStringList tags;      // 最近的标签，新在前（检测时刷新，最多 20 个）
     QString lastCommit;
     QString lastCommitTime; // 相对时间，如“3 天前”
     QString error;
@@ -44,6 +45,7 @@ struct CheckOutcome
     QString lastCommit;
     QString lastCommitTime;
     QStringList branches;
+    QStringList tags;
     int behind = 0;
     int ahead = 0;
     bool dirty = false;
@@ -69,6 +71,7 @@ public:
         BranchRole,
         PinnedBranchRole,
         BranchesRole,
+        TagsRole,
         StateRole,
         BehindRole,
         AheadRole,
@@ -102,7 +105,7 @@ public:
     Q_INVOKABLE void refreshAll();
     Q_INVOKABLE void updateChecked();
     Q_INVOKABLE void setAllChecked(bool checked);
-    Q_INVOKABLE void switchBranch(const QString &path, const QString &branch);
+    Q_INVOKABLE void switchBranch(const QString &path, const QString &ref, const QString &kind); // kind: ""=本地分支 "remote"=远端 "tag"=标签
     Q_INVOKABLE void pinCurrentBranch(const QString &path);
     Q_INVOKABLE void unpinBranch(const QString &path);
 

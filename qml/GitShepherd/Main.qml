@@ -66,7 +66,7 @@ ApplicationWindow {
                 }
 
                 Text {
-                    text: "v0.3"
+                    text: "v0.4"
                     color: Theme.dim
                     font.pixelSize: 11
                     Layout.alignment: Qt.AlignBottom
@@ -224,8 +224,8 @@ ApplicationWindow {
                 width: ListView.view.width
 
                 onRemoveRequested: function(index) { repoModel.removeAt(index) }
-                onBranchSwitchRequested: function(path, branch) {
-                    repoModel.switchBranch(path, branch)
+                onBranchSwitchRequested: function(path, ref, kind) {
+                    repoModel.switchBranch(path, ref, kind)
                 }
                 onPinRequested: function(path) { repoModel.pinCurrentBranch(path) }
                 onUnpinRequested: function(path) { repoModel.unpinBranch(path) }

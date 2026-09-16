@@ -11,6 +11,7 @@ Rectangle {
     required property string branch
     required property string pinnedBranch
     required property var branches
+    required property var tags
     required property string state
     required property int behind
     required property int ahead
@@ -20,7 +21,7 @@ Rectangle {
     required property bool checked
 
     signal removeRequested(int index)
-    signal branchSwitchRequested(string path, string branch)
+    signal branchSwitchRequested(string path, string ref, string kind)
     signal pinRequested(string path)
     signal unpinRequested(string path)
 
@@ -121,7 +122,7 @@ Rectangle {
                     hoverEnabled: true
                     padding: 0
                     implicitHeight: 22
-                    onClicked: root.branchSwitchRequested(root.path, root.pinnedBranch)
+                    onClicked: root.branchSwitchRequested(root.path, root.pinnedBranch, "")
 
                     background: Rectangle {
                         radius: 5
@@ -234,9 +235,10 @@ Rectangle {
         currentBranch: root.branch
         pinnedBranch: root.pinnedBranch
         branches: root.branches
+        tags: root.tags
 
-        onSwitchRequested: function(branch) {
-            root.branchSwitchRequested(root.path, branch)
+        onSwitchRequested: function(ref, kind) {
+            root.branchSwitchRequested(root.path, ref, kind)
         }
         onPinCurrentRequested: root.pinRequested(root.path)
         onUnpinRequested: root.unpinRequested(root.path)

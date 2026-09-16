@@ -87,8 +87,15 @@ CheckOutcome checkRepo(const QString &path, bool fetch)
     const auto branch = GitRunner::run(path, { QStringLiteral("branch"),
                                                QStringLiteral("--show-current") });
     o.branch = branch.ok ? branch.out.trimmed() : QString();
-    if (o.branch.isEmpty())
-        o.branch = QStringLiteral("(detached)");
+    if (o.branch.isEmpty()) {
+        // detached：优先显示正指向的标签
+        const auto tag = GitRunner::run(path, { QStringLiteral("describe"),
+                                                QStringLiteral("--tags"),
+                                                QStringLiteral("--exact-match"),
+                                                QStringLiteral("HEAD") });
+        o.branch = tag.ok ? QStringLiteral("🏷 ") + tag.out.trimmed()
+                          : QStringLiteral("(detached)");
+    }
 
     fillLastCommit(path, &o.lastCommit, &o.lastCommitTime);
 
@@ -103,6 +110,19 @@ CheckOutcome checkRepo(const QString &path, bool fetch)
                 || b.endsWith(QLatin1String("/HEAD")) || b.contains(QLatin1String("->")))
                 continue;
             o.branches << b;
+        }
+    }
+
+    const auto tagList = GitRunner::run(path, { QStringLiteral("tag"),
+                                                QStringLiteral("--sort=-creatordate") });
+    if (tagList.ok) {
+        const QStringList lines = tagList.out.split(QLatin1Char('\n'));
+        for (const QString &line : lines) {
+            const QString t = line.trimmed();
+            if (!t.isEmpty())
+                o.tags << t;
+            if (o.tags.size() >= 20)
+                break;
         }
     }
 
@@ -149,7 +169,7 @@ CheckOutcome checkRepo(const QString &path, bool fetch)
     return o;
 }
 
-CheckOutcome runSwitch(const QString &path, const QString &branch)
+CheckOutcome runSwitch(const QString &path, const QString &ref, const QString &kind)
 {
     CheckOutcome o;
 
@@ -157,14 +177,17 @@ CheckOutcome runSwitch(const QString &path, const QString &branch)
                                                QStringLiteral("--porcelain") });
     if (status.ok && !status.out.trimmed().isEmpty()) {
         o.state = RepoInfo::State::Dirty;
-        o.error = QStringLiteral("本地有改动，未切换分支（处理改动后重试）");
+        o.error = QStringLiteral("本地有改动，未切换（处理改动后重试）");
         return o;
     }
 
-    const bool isRemoteRef = branch.contains(QLatin1Char('/'));
-    const QStringList args = isRemoteRef
-        ? QStringList{ QStringLiteral("checkout"), QStringLiteral("-t"), branch }
-        : QStringList{ QStringLiteral("checkout"), branch };
+    QStringList args;
+    if (kind == QLatin1String("tag"))
+        args = { QStringLiteral("checkout"), QStringLiteral("tags/") + ref };
+    else if (kind == QLatin1String("remote"))
+        args = { QStringLiteral("checkout"), QStringLiteral("-t"), ref };
+    else
+        args = { QStringLiteral("checkout"), ref };
     const auto co = GitRunner::run(path, args);
     if (!co.ok) {
         o.state = RepoInfo::State::Error;
@@ -217,6 +240,7 @@ QVariant RepoModel::data(const QModelIndex &index, int role) const
     case BranchRole:         return r.branch;
     case PinnedBranchRole:   return r.pinnedBranch;
     case BranchesRole:       return r.branches;
+    case TagsRole:           return r.tags;
     case StateRole:          return stateToString(r.state);
     case BehindRole:         return r.behind;
     case AheadRole:          return r.ahead;
@@ -248,6 +272,7 @@ QHash<int, QByteArray> RepoModel::roleNames() const
         { BranchRole,         "branch" },
         { PinnedBranchRole,   "pinnedBranch" },
         { BranchesRole,       "branches" },
+        { TagsRole,           "tags" },
         { StateRole,          "state" },
         { BehindRole,         "behind" },
         { AheadRole,          "ahead" },
@@ -455,7 +480,7 @@ void RepoModel::setAllChecked(bool checked)
     emit checkedCountChanged();
 }
 
-void RepoModel::switchBranch(const QString &path, const QString &branch)
+void RepoModel::switchBranch(const QString &path, const QString &ref, const QString &kind)
 {
     const int row = indexOfPath(normalizePath(path));
     if (row < 0 || busy())
@@ -467,12 +492,14 @@ void RepoModel::switchBranch(const QString &path, const QString &branch)
     m_repos[row].state = RepoInfo::State::Switching;
     m_repos[row].error.clear();
     emitRowChanged(row);
-    setSummary(QStringLiteral("切换分支中…"));
+    setSummary(kind == QLatin1String("tag")
+                   ? QStringLiteral("切换标签中…")
+                   : QStringLiteral("切换分支中…"));
     beginJob();
 
     const RepoInfo info = m_repos.at(row);
-    m_pool.start([this, info, branch] {
-        const CheckOutcome r = runSwitch(info.path, branch);
+    m_pool.start([this, info, ref, kind] {
+        const CheckOutcome r = runSwitch(info.path, ref, kind);
         QMetaObject::invokeMethod(this, [this, info, r] {
             applyCheckResult(info.path, r, true);
         }, Qt::QueuedConnection);
@@ -592,6 +619,7 @@ void RepoModel::applyCheckResult(const QString &path, const CheckOutcome &r, boo
     RepoInfo &repo = m_repos[row];
     repo.branch = r.branch;
     repo.branches = r.branches;
+    repo.tags = r.tags;
     repo.lastCommit = r.lastCommit;
     repo.lastCommitTime = r.lastCommitTime;
     repo.error = r.error;
