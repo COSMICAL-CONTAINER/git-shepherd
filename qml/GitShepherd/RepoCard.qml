@@ -20,7 +20,7 @@ Rectangle {
     required property string error
     required property bool checked
 
-    signal removeRequested(int index)
+    signal removeRequested(string path)
     signal branchSwitchRequested(string path, string ref, string kind)
     signal pinRequested(string path)
     signal unpinRequested(string path)
@@ -209,7 +209,7 @@ Rectangle {
             implicitWidth: 30
             implicitHeight: 30
             Layout.alignment: Qt.AlignVCenter
-            onClicked: root.removeRequested(root.index)
+            onClicked: root.removeRequested(root.path)
 
             contentItem: Text {
                 text: "✕"
@@ -229,8 +229,6 @@ Rectangle {
     BranchMenu {
         id: branchMenu
         parent: branchChip
-        y: branchChip.height + 6
-        x: Math.round((branchChip.width - width) / 2)
         repoPath: root.path
         currentBranch: root.branch
         pinnedBranch: root.pinnedBranch

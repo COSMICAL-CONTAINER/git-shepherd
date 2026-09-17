@@ -8,34 +8,46 @@ Rectangle {
     property int behind: 0
     property int ahead: 0
 
-    readonly property var info: ({
-        "idle":            { label: qsTr("待检测"), color: Theme.dim },
-        "checking":        { label: qsTr("检测中"), color: Theme.dim },
-        "updating":        { label: qsTr("更新中"), color: Theme.accent },
-        "switching":       { label: qsTr("切换中"), color: Theme.accent },
-        "upToDate":        { label: qsTr("最新"),   color: Theme.green },
-        "updateAvailable": { label: qsTr("可更新"), color: Theme.amber },
-        "dirty":           { label: qsTr("本地改动"), color: Theme.orange },
-        "diverged":        { label: qsTr("分叉"),   color: Theme.purple },
-        "noUpstream":      { label: qsTr("无上游"), color: Theme.dim },
-        "error":           { label: qsTr("错误"),   color: Theme.red },
-        "updated":         { label: qsTr("已更新"), color: Theme.green }
-    })
-    readonly property var current: info[state] !== undefined ? info[state] : info["idle"]
+    // 标量属性替代整表 var 对象：依赖只剩 state 与用到的 Theme 令牌，
+    // 主题切换时的重求值面最小
+    readonly property color badgeColor: {
+        switch (state) {
+        case "updating":
+        case "switching": return Theme.accent
+        case "upToDate":
+        case "updated": return Theme.green
+        case "updateAvailable": return Theme.amber
+        case "dirty": return Theme.orange
+        case "diverged": return Theme.purple
+        case "error": return Theme.red
+        default: return Theme.dim
+        }
+    }
     readonly property bool spinning: state === "checking" || state === "updating"
+                                     || state === "switching"
 
     function labelText(): string {
-        if (state === "diverged")
-            return behind > 0 ? qsTr("已分叉") : qsTr("未推送");
-        return current.label;
+        switch (state) {
+        case "checking": return qsTr("检测中")
+        case "updating": return qsTr("更新中")
+        case "switching": return qsTr("切换中")
+        case "upToDate": return qsTr("最新")
+        case "updateAvailable": return qsTr("可更新")
+        case "dirty": return qsTr("本地改动")
+        case "diverged": return behind > 0 ? qsTr("已分叉") : qsTr("未推送")
+        case "noUpstream": return qsTr("无上游")
+        case "error": return qsTr("错误")
+        case "updated": return qsTr("已更新")
+        default: return qsTr("待检测")
+        }
     }
 
     radius: height / 2
     implicitHeight: 22
     implicitWidth: row.implicitWidth + 20
-    color: Qt.alpha(current.color, 0.14)
+    color: Qt.alpha(badgeColor, 0.14)
     border.width: 1
-    border.color: Qt.alpha(current.color, 0.45)
+    border.color: Qt.alpha(badgeColor, 0.45)
 
     Row {
         id: row
@@ -52,7 +64,7 @@ Rectangle {
 
         Text {
             text: root.labelText()
-            color: root.current.color
+            color: root.badgeColor
             font.pixelSize: 12
             font.bold: true
             anchors.verticalCenter: parent.verticalCenter

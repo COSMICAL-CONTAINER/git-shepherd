@@ -188,7 +188,7 @@ CheckOutcome runSwitch(const QString &path, const QString &ref, const QString &k
         args = { QStringLiteral("checkout"), QStringLiteral("-t"), ref };
     else
         args = { QStringLiteral("checkout"), ref };
-    const auto co = GitRunner::run(path, args);
+    const auto co = GitRunner::run(path, args, 300000); // 写命令放宽到 5 分钟，降低超时硬杀概率
     if (!co.ok) {
         o.state = RepoInfo::State::Error;
         o.error = QStringLiteral("切换失败：") + co.firstErrorLine();
@@ -322,7 +322,9 @@ void RepoModel::addRepo(const QString &path)
     save();
     emitCounts();
 
-    m_batch = Batch::Check;
+    // Update 批次进行中不改写批次状态，避免吞掉更新的成功/跳过/失败统计
+    if (m_batch != Batch::Update)
+        m_batch = Batch::Check;
     scheduleCheck(m_repos.size() - 1);
 }
 
@@ -351,17 +353,20 @@ void RepoModel::importPaths(const QStringList &paths, const QString &folder)
         }
         save();
         emitCounts();
-        m_batch = Batch::Check;
+        if (m_batch != Batch::Update)
+            m_batch = Batch::Check;
         setSummary(QStringLiteral("已导入 %1 个仓库，检测中…").arg(added));
     }
 }
 
-void RepoModel::removeAt(int index)
+void RepoModel::removeRepo(const QString &path)
 {
-    if (index < 0 || index >= m_repos.size())
+    // 按路径定位而非行号：QML 侧经代理模型过滤后 index 与源模型错位
+    const int row = indexOfPath(normalizePath(path));
+    if (row < 0)
         return;
-    beginRemoveRows(QModelIndex(), index, index);
-    m_repos.removeAt(index);
+    beginRemoveRows(QModelIndex(), row, row);
+    m_repos.removeAt(row);
     endRemoveRows();
     save();
     emitCounts();
@@ -372,6 +377,7 @@ void RepoModel::removeFolder(const QString &folder)
     const QString f = normalizePath(folder);
     if (!m_folders.removeOne(f))
         return;
+    const int before = m_repos.size();
     beginResetModel();
     m_repos.erase(std::remove_if(m_repos.begin(), m_repos.end(),
                                  [f](const RepoInfo &r) { return r.folder == f; }),
@@ -380,14 +386,16 @@ void RepoModel::removeFolder(const QString &folder)
     save();
     emit foldersChanged();
     emitCounts();
-    setSummary(QStringLiteral("已移除文件夹 %1（及其下 %2 个登记仓库中的关联项）")
-                   .arg(f).arg(0));
+    setSummary(QStringLiteral("已移除文件夹 %1（及其下 %2 个登记仓库）")
+                   .arg(f).arg(before - m_repos.size()));
 }
 
 void RepoModel::scanFolder(const QString &root)
 {
-    if (busy())
+    if (busy()) {
+        setSummary(QStringLiteral("正在执行任务，请稍候再扫描…"));
         return;
+    }
     const QString r = normalizePath(root);
     setSummary(QStringLiteral("扫描中…"));
     beginJob();
@@ -451,7 +459,8 @@ void RepoModel::updateChecked()
                     return skip;
                 }
                 const auto pull = GitRunner::run(info.path, { QStringLiteral("pull"),
-                                                              QStringLiteral("--ff-only") });
+                                                              QStringLiteral("--ff-only") },
+                                                 300000);
                 if (!pull.ok) {
                     CheckOutcome fail;
                     fail.state = RepoInfo::State::Error;
@@ -483,8 +492,12 @@ void RepoModel::setAllChecked(bool checked)
 void RepoModel::switchBranch(const QString &path, const QString &ref, const QString &kind)
 {
     const int row = indexOfPath(normalizePath(path));
-    if (row < 0 || busy())
+    if (row < 0)
         return;
+    if (busy()) {
+        setSummary(QStringLiteral("正在执行任务，请稍候再切换…"));
+        return;
+    }
     const RepoInfo::State s = m_repos.at(row).state;
     if (s == RepoInfo::State::Updating || s == RepoInfo::State::Switching)
         return;
@@ -512,7 +525,9 @@ void RepoModel::pinCurrentBranch(const QString &path)
     if (row < 0)
         return;
     const QString b = m_repos.at(row).branch;
-    if (b.isEmpty() || b == QStringLiteral("(detached)"))
+    // detached（含停在标签上）没有分支语义，不允许设跟随
+    if (b.isEmpty() || b == QStringLiteral("(detached)")
+        || b.startsWith(QStringLiteral("🏷 ")))
         return;
     m_repos[row].pinnedBranch = b;
     save();
@@ -582,8 +597,14 @@ void RepoModel::save() const
 int RepoModel::indexOfPath(const QString &path) const
 {
     for (int i = 0; i < m_repos.size(); ++i) {
+#ifdef Q_OS_WIN
+        // Windows 路径大小写不敏感，E:/x 与 e:/x 视为同一仓库，防止重复登记
+        if (m_repos.at(i).path.compare(path, Qt::CaseInsensitive) == 0)
+            return i;
+#else
         if (m_repos.at(i).path == path)
             return i;
+#endif
     }
     return -1;
 }
@@ -633,6 +654,9 @@ void RepoModel::applyCheckResult(const QString &path, const CheckOutcome &r, boo
     if (fromSwitch) {
         if (r.state == RepoInfo::State::Error || r.state == RepoInfo::State::Dirty)
             setSummary(QStringLiteral("%1：%2").arg(repo.name, r.error));
+        else if (repo.branch.startsWith(QStringLiteral("🏷 ")))
+            setSummary(QStringLiteral("%1 已检出标签 %2（detached 状态，新提交不挂任何分支）")
+                           .arg(repo.name, r.branch));
         else
             setSummary(QStringLiteral("%1 已切换到 %2").arg(repo.name, r.branch));
     }

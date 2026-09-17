@@ -99,7 +99,7 @@ public:
 
     Q_INVOKABLE void addRepo(const QString &path);
     Q_INVOKABLE void importPaths(const QStringList &paths, const QString &folder);
-    Q_INVOKABLE void removeAt(int index);
+    Q_INVOKABLE void removeRepo(const QString &path);
     Q_INVOKABLE void scanFolder(const QString &root);
     Q_INVOKABLE void removeFolder(const QString &folder);
     Q_INVOKABLE void refreshAll();

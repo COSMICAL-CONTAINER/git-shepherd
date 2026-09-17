@@ -12,7 +12,7 @@ Dialog {
 
     function openWith(paths, folder) {
         foundModel.clear()
-        for (var i = 0; i < paths.length; ++i)
+        for (let i = 0; i < paths.length; ++i)
             foundModel.append({ path: paths[i], picked: true })
         sourceFolder = folder
         recount()
@@ -20,16 +20,16 @@ Dialog {
     }
 
     function recount() {
-        var n = 0
-        for (var i = 0; i < foundModel.count; ++i)
+        let n = 0
+        for (let i = 0; i < foundModel.count; ++i)
             if (foundModel.get(i).picked)
                 ++n
         selectedCount = n
     }
 
     function collect() {
-        var out = []
-        for (var i = 0; i < foundModel.count; ++i)
+        let out = []
+        for (let i = 0; i < foundModel.count; ++i)
             if (foundModel.get(i).picked)
                 out.push(foundModel.get(i).path)
         return out
@@ -86,7 +86,7 @@ Dialog {
                 text: qsTr("全选")
                 checked: root.selectedCount === foundModel.count
                 onClicked: {
-                    for (var i = 0; i < foundModel.count; ++i)
+                    for (let i = 0; i < foundModel.count; ++i)
                         foundModel.setProperty(i, "picked", checked)
                     root.recount()
                 }

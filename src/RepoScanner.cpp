@@ -2,6 +2,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QSet>
 
 #include <queue>
 #include <utility>
@@ -12,6 +13,7 @@ QStringList RepoScanner::scan(const QString &root, int maxDepth)
     std::queue<std::pair<QString, int>> todo;
     todo.push({ QDir::cleanPath(root), 0 });
 
+    // 统一小写比较，Windows 上 "Build"/"DIST" 同样被跳过
     static const QSet<QString> skipDirs = {
         QStringLiteral("node_modules"), QStringLiteral("target"),
         QStringLiteral("build"), QStringLiteral("vendor"),
@@ -33,7 +35,7 @@ QStringList RepoScanner::scan(const QString &root, int maxDepth)
         const QStringList subs = QDir(dir).entryList(
             QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
         for (const QString &sub : subs) {
-            if (sub.startsWith(QLatin1Char('.')) || skipDirs.contains(sub))
+            if (sub.startsWith(QLatin1Char('.')) || skipDirs.contains(sub.toLower()))
                 continue;
             todo.push({ dir + QLatin1Char('/') + sub, depth + 1 });
         }

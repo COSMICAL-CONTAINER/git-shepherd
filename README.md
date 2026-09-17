@@ -1,4 +1,4 @@
-# git-shepherd — 0.4.0
+# git-shepherd — 0.4.1
 
 🐑 应用商店式的 Git 仓库更新管理器。把散落在电脑各处的 `git clone` 项目登记成一张表，打开软件自动检测谁有更新，像应用市场一样勾选、一键批量 `git pull`。
 
@@ -73,6 +73,12 @@ windeployqt build/git-shepherd.exe   # 部署 DLL，之后可直接双击运行
 **Q：切分支会丢我的改动吗？**
 不会。工作区有改动时会直接拒绝切换并提示；切换本身只做 `git checkout`。
 
+**Q：更新/切换会执行仓库里的 hooks 吗？**
+会。`pull` / `checkout` 遵循 git 常规语义，会触发仓库本机的 post-merge / post-checkout hooks（hooks 不会被 clone 传播，只来自你本机）。若命令超时被终止且后续 git 操作报 `index.lock` 错误，手动删除该仓库 `.git/index.lock` 即可恢复。
+
+**Q：检出标签后是什么状态？**
+detached HEAD——此状态下的新提交不挂任何分支，工具会在切换结果里明示；切回分支后这些提交仍可通过 `git reflog` 找回（默认保留 90 天）。
+
 **Q：支持 macOS / Linux 吗？**
 代码未做平台假设，理论上可编译运行，但只在 Windows 上测试过。
 
@@ -100,6 +106,8 @@ git-shepherd/
 ```
 
 ## 更新日志
+
+**0.4.1** — 全量 code review 修复：过滤 tab 下删除仓库改按路径定位（修删错行）；分支菜单正确显示含斜杠的本地分支（feature/xxx 等）；文件夹 Tab 的关闭按钮修复点击遮挡；写操作（pull/checkout）超时放宽至 5 分钟并在超时提示 index.lock 恢复方法；Tab 按内容锚定不再因文件夹增删跳位；busy 期间按钮禁用与提示；检出标签明示 detached 语义。
 
 **0.4.0** — 分支菜单新增标签区（最近 20 个，新在前），点选检出对应 tag（detached 状态卡片显示 🏷 标签名）；切换类型显式区分本地分支 / 远端分支 / 标签，避免同名歧义。
 

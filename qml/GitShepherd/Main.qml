@@ -14,14 +14,24 @@ ApplicationWindow {
     title: qsTr("git-shepherd")
     color: Theme.bg
 
-    property int currentTab: 0
+    // 以 key 锚定当前 tab（"all" | "folder:<路径>" | "standalone"），
+    // 文件夹增删导致索引平移时不会跳到错误的 tab
+    property string currentTabKey: "all"
     property string pendingScanFolder: ""
 
     readonly property var tabNames: [qsTr("全部")].concat(repoModel.folders)
                                    .concat([qsTr("单独仓库")])
-    readonly property bool folderTabActive: currentTab >= 1 && currentTab < tabNames.length - 1
+    readonly property int currentTab: {
+        if (currentTabKey === "all")
+            return 0
+        if (currentTabKey === "standalone")
+            return tabNames.length - 1
+        const i = repoModel.folders.indexOf(currentTabKey.substring(7))
+        return i >= 0 ? i + 1 : 0
+    }
+    readonly property bool folderTabActive: currentTabKey.startsWith("folder:")
     readonly property string currentFolder: folderTabActive
-                                            ? repoModel.folders[currentTab - 1] : ""
+                                            ? currentTabKey.substring(7) : ""
 
     RepoModel {
         id: repoModel
@@ -30,17 +40,14 @@ ApplicationWindow {
     RepoFilterProxy {
         id: repoProxy
         sourceModel: repoModel
-        mode: currentTab === 0 ? "all"
-             : (currentTab === root.tabNames.length - 1 ? "standalone" : "folder")
+        mode: currentTabKey === "all" ? "all"
+             : (currentTabKey === "standalone" ? "standalone" : "folder")
         folderPath: root.currentFolder
     }
 
     Connections {
         target: repoModel
         function onScanFinished(paths) { scanDialog.openWith(paths, root.pendingScanFolder) }
-        function onFoldersChanged() {
-            root.currentTab = Math.min(root.currentTab, root.tabNames.length - 1)
-        }
     }
 
     header: Column {
@@ -66,7 +73,7 @@ ApplicationWindow {
                 }
 
                 Text {
-                    text: "v0.4"
+                    text: "v0.4.1"
                     color: Theme.dim
                     font.pixelSize: 11
                     Layout.alignment: Qt.AlignBottom
@@ -78,12 +85,14 @@ ApplicationWindow {
                 AppButton {
                     kind: "accent"
                     text: qsTr("扫描文件夹")
+                    enabled: !repoModel.busy
                     onClicked: scanSourceDialog.open()
                 }
 
                 AppButton {
                     kind: "outline"
                     text: qsTr("添加仓库")
+                    enabled: !repoModel.busy
                     onClicked: addRepoDialog.open()
                 }
 
@@ -143,8 +152,8 @@ ApplicationWindow {
                                 : pill.modelData
 
                             height: 30
-                            width: pillRow.implicitWidth + 22
-                                     + (isFolderTab && pillMouse.containsMouse ? 18 : 0)
+                            // 文件夹 tab 固定预留 ✕ 的宽度，避免悬停时整排 tab 跳动
+                            width: pillRow.implicitWidth + 22 + (isFolderTab ? 18 : 0)
                             radius: 15
                             color: selected ? Theme.surfaceAlt : "transparent"
                             border.width: selected ? 1 : 0
@@ -152,7 +161,9 @@ ApplicationWindow {
 
                             Row {
                                 id: pillRow
-                                anchors.centerIn: parent
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.left: parent.left
+                                anchors.leftMargin: 11
                                 spacing: 4
 
                                 Text {
@@ -163,23 +174,6 @@ ApplicationWindow {
                                     font.bold: pill.selected
                                     elide: Text.ElideMiddle
                                 }
-
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    visible: pill.isFolderTab && pillMouse.containsMouse
-                                    text: "✕"
-                                    color: closeMouse.containsMouse ? Theme.red : Theme.dim
-                                    font.pixelSize: 11
-
-                                    MouseArea {
-                                        id: closeMouse
-                                        anchors.fill: parent
-                                        anchors.margins: -6
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: repoModel.removeFolder(pill.modelData)
-                                    }
-                                }
                             }
 
                             MouseArea {
@@ -187,7 +181,34 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.currentTab = pill.index
+                                onClicked: {
+                                    if (pill.index === 0)
+                                        root.currentTabKey = "all"
+                                    else if (pill.isFolderTab)
+                                        root.currentTabKey = "folder:" + pill.modelData
+                                    else
+                                        root.currentTabKey = "standalone"
+                                }
+                            }
+
+                            // ✕ 声明在 pillMouse 之后（顶层），否则点击被整层 MouseArea 吞掉
+                            Text {
+                                visible: pill.isFolderTab && pillMouse.containsMouse
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.right: parent.right
+                                anchors.rightMargin: 8
+                                text: "✕"
+                                color: closeMouse.containsMouse ? Theme.red : Theme.dim
+                                font.pixelSize: 11
+
+                                MouseArea {
+                                    id: closeMouse
+                                    anchors.fill: parent
+                                    anchors.margins: -6
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: repoModel.removeFolder(pill.modelData)
+                                }
                             }
                         }
                     }
@@ -223,7 +244,7 @@ ApplicationWindow {
             delegate: RepoCard {
                 width: ListView.view.width
 
-                onRemoveRequested: function(index) { repoModel.removeAt(index) }
+                onRemoveRequested: function(path) { repoModel.removeRepo(path) }
                 onBranchSwitchRequested: function(path, ref, kind) {
                     repoModel.switchBranch(path, ref, kind)
                 }

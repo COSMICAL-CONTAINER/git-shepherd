@@ -15,9 +15,10 @@ Popup {
     signal pinCurrentRequested()
     signal unpinRequested()
 
-    // 只展示本地分支 + 远端独有分支（远端去重后带 origin/ 前缀）
+    // 本地分支名可含斜杠（feature/xxx），只有 origin/ 前缀的才是远端跟踪分支；
+    // 其他远端（upstream/*）归入本地区，git checkout 对其同样做 DWIM 建分支
     readonly property var displayList: {
-        const locals = branches.filter(b => !b.includes("/"))
+        const locals = branches.filter(b => !b.startsWith("origin/"))
         const remotes = branches.filter(
             b => b.startsWith("origin/") && !locals.includes(b.substring(7)))
         return locals.concat(remotes)
@@ -29,7 +30,18 @@ Popup {
 
     width: 264
     padding: 8
+    margins: 8
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+    // 弹层边界防护：底部放不下则向上弹，左缘不越出窗口
+    onAboutToShow: {
+        if (!parent || !Overlay.overlay)
+            return
+        const pos = parent.mapToItem(Overlay.overlay, 0, 0)
+        y = pos.y + parent.height + height > Overlay.overlay.height - 8
+            ? -height - 6 : parent.height + 6
+        x = Math.max(8 - pos.x, Math.round((parent.width - width) / 2))
+    }
     background: Rectangle {
         color: Theme.surface
         radius: 10
@@ -56,7 +68,7 @@ Popup {
             id: branchList
             visible: root.displayList.length > 0
             Layout.fillWidth: true
-            implicitHeight: Math.min(contentHeight, 240)
+            implicitHeight: Math.min(contentHeight, 200)
             clip: true
             spacing: 2
             model: root.displayList
@@ -73,7 +85,7 @@ Popup {
                 id: branchRow
                 required property string modelData
                 readonly property bool isCurrent: modelData === root.currentBranch
-                readonly property bool isRemote: modelData.includes("/")
+                readonly property bool isRemote: modelData.startsWith("origin/")
 
                 width: branchList.width
                 height: 30
@@ -130,7 +142,7 @@ Popup {
         Rectangle {
             visible: root.tags.length > 0
             Layout.fillWidth: true
-            height: 1
+            Layout.preferredHeight: 1
             color: Theme.border
         }
 
@@ -146,7 +158,7 @@ Popup {
             id: tagList
             visible: root.tags.length > 0
             Layout.fillWidth: true
-            implicitHeight: Math.min(contentHeight, 170)
+            implicitHeight: Math.min(contentHeight, 140)
             clip: true
             spacing: 2
             model: root.tags
@@ -212,7 +224,7 @@ Popup {
         Rectangle {
             visible: root.displayList.length > 0
             Layout.fillWidth: true
-            height: 1
+            Layout.preferredHeight: 1
             color: Theme.border
         }
 
@@ -221,7 +233,7 @@ Popup {
             visible: root.displayList.length > 0
                      && (root.pinnedBranch.length > 0 || root.onBranch)
             Layout.fillWidth: true
-            height: 34
+            Layout.preferredHeight: 34
             radius: 6
             color: pinMouse.containsMouse ? Theme.surfaceAlt : "transparent"
 

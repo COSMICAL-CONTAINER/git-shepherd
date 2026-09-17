@@ -42,6 +42,13 @@ GitResult GitRunner::run(const QString &workDir, const QStringList &args, int ti
             r.err = QStringLiteral("命令超时（%1 秒）：%2")
                         .arg(timeoutMs / 1000)
                         .arg(args.join(QLatin1Char(' ')));
+            // 写命令被硬终止可能残留 .git/index.lock，必须向用户披露恢复方法
+            if (args.contains(QLatin1String("checkout"))
+                || args.contains(QLatin1String("pull"))) {
+                r.err += QStringLiteral(
+                    "\n命令已被强制终止；若该仓库后续 git 操作报 index.lock 错误，"
+                    "请手动删除 .git/index.lock 后重试");
+            }
             return r;
         }
     }
